@@ -36,8 +36,8 @@ The primary goal of this project is to automatically classify weather conditions
 *   **Robust Error Handling:** Includes checks and fallback mechanisms.
 
 ## 📁 Project Structure
-├── your_repo_name/
-│ ├── cloud_classifier.py # Main Python script with all steps (rename your .txt file)
+├── weather-prediction/
+│ ├── weather_predict.py # Main Python script with all steps
 │ ├── datasets/ # Directory containing input datasets (or linked via path)
 │ │ ├── CCSN_v2/ # Source Dataset 1
 │ │ └── Howard-Cloud-X/ # Source Dataset 2
@@ -61,8 +61,6 @@ The primary goal of this project is to automatically classify weather conditions
 │ ├── requirements.txt # Python dependencies
 │ └── README.md # This file
 
-*Note: You will need to create `requirements.txt` based on the imports in the script.*
-
 ## 📊 Datasets Used
 
 This project combines data from:
@@ -76,8 +74,8 @@ The script automatically maps the inherent cloud types (like Cumulonimbus, Cirru
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your_username/your_repo_name.git
-    cd your_repo_name
+    git clone https://github.com/your_username/weather-prediction.git
+    cd weather-prediction
     ```
 
 2.  **Set up a virtual environment (Recommended):**
