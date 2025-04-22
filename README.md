@@ -110,10 +110,11 @@ The script automatically maps the inherent cloud types (like Cumulonimbus, Cirru
 ## 💡 Explainability with GradCAM
 
 Step 4 utilizes GradCAM to provide insights into the model's decision-making process. It generates heatmaps that overlay the input image, highlighting the pixels and regions that were most influential in predicting a specific weather category. This helps in understanding if the model is focusing on relevant features (like specific cloud textures or formations). Example visualizations are printed during the script's execution.
-`![Figure_1]Outputs/gradCAM/Figure_1.png`
-`![Figure_2](https://github.com/user-attachments/assets/414e9957-d881-4e93-9f33-bb7d76a77218)`
-`![Figure_3](https://github.com/user-attachments/assets/4c9752c0-0164-4bb3-a026-bcdfaf1202ca)`
-`![Figure_4](https://github.com/user-attachments/assets/99a67415-dbb6-45c7-a96a-6fd9556917e4)`
+
+![Figure_1](https://github.com/user-attachments/assets/c419eb91-5ec5-4527-ae3c-d1fc151c6984)
+![Figure_2](https://github.com/user-attachments/assets/414e9957-d881-4e93-9f33-bb7d76a77218)
+![Figure_3](https://github.com/user-attachments/assets/4c9752c0-0164-4bb3-a026-bcdfaf1202ca)
+![Figure_4](https://github.com/user-attachments/assets/99a67415-dbb6-45c7-a96a-6fd9556917e4)
 
 ## 🏆 Results
 
