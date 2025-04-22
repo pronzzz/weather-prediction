@@ -74,7 +74,7 @@ The script automatically maps the inherent cloud types (like Cumulonimbus, Cirru
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your_username/weather-prediction.git
+    git clone https://github.com/pronzzz/weather-prediction.git
     cd weather-prediction
     ```
 
@@ -88,7 +88,7 @@ The script automatically maps the inherent cloud types (like Cumulonimbus, Cirru
     ```bash
     pip install -r requirements.txt
     ```
-    *(You'll need to create `requirements.txt`. Use `pip freeze > requirements.txt` after installing necessary packages like `torch`, `torchvision`, `timm`, `numpy`, `pandas`, `opencv-python`, `matplotlib`, `seaborn`, `tqdm`, `pillow`). Make sure PyTorch is installed according to your system/CUDA setup from the [official PyTorch website](https://pytorch.org/).*
+    Make sure PyTorch is installed according to your system/CUDA setup from the [official PyTorch website](https://pytorch.org/).*
 
 4.  **Dataset Paths:**
     *   Download or locate the `CCSN_v2` and `Howard-Cloud-X` datasets.
@@ -100,7 +100,7 @@ The script automatically maps the inherent cloud types (like Cumulonimbus, Cirru
 
 2.  **Run the Full Pipeline:** Execute the main script. This will perform all steps sequentially: merging, EDA, training, explanation, and prediction test.
     ```bash
-    python cloud_classifier.py
+    python weather_predict.py
     ```
 
 3.  **Running Specific Parts (Optional):** The script is divided into steps (marked with `%% Step X`). You can comment out or modify sections if you only need to run specific parts (e.g., only training or only prediction).
@@ -110,9 +110,10 @@ The script automatically maps the inherent cloud types (like Cumulonimbus, Cirru
 ## 💡 Explainability with GradCAM
 
 Step 4 utilizes GradCAM to provide insights into the model's decision-making process. It generates heatmaps that overlay the input image, highlighting the pixels and regions that were most influential in predicting a specific weather category. This helps in understanding if the model is focusing on relevant features (like specific cloud textures or formations). Example visualizations are printed during the script's execution.
-
-*(Consider adding a sample GradCAM output image here if you have one)*
-`[Placeholder for GradCAM visualization example]`
+`![Figure_1](https://github.com/user-attachments/assets/b75e0f36-024a-4a91-915d-e9fe776eeeb7)`
+`![Figure_2](https://github.com/user-attachments/assets/414e9957-d881-4e93-9f33-bb7d76a77218)`
+`![Figure_3](https://github.com/user-attachments/assets/4c9752c0-0164-4bb3-a026-bcdfaf1202ca)`
+`![Figure_4](https://github.com/user-attachments/assets/99a67415-dbb6-45c7-a96a-6fd9556917e4)`
 
 ## 🏆 Results
 
