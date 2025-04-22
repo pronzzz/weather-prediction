@@ -1,0 +1,132 @@
+Dataset Overview:
+   split weather    cloud_type                                  filename  \
+0  train   rainy  Nimbostratus  9c724af9-6582-4d73-a6d2-cd42f489f7c3.jpg   
+1  train   rainy  Nimbostratus                               Ns-N138.jpg   
+2  train   rainy  Nimbostratus  c3b14216-6888-4854-9c68-74133a9706ff.jpg   
+3  train   rainy  Nimbostratus                               Ns-N120.jpg   
+4  train   rainy  Nimbostratus  20301b56-ee01-413f-84d5-dbb9aa8a2945.jpg   
+
+                                            filepath  
+0  /content/drive/MyDrive/Capstone Project/Code &...  
+1  /content/drive/MyDrive/Capstone Project/Code &...  
+2  /content/drive/MyDrive/Capstone Project/Code &...  
+3  /content/drive/MyDrive/Capstone Project/Code &...  
+4  /content/drive/MyDrive/Capstone Project/Code &...  
+
+Total images: 3959
+Train images: 2940
+Val images: 519
+Test images: 500
+
+Image counts by Split and Weather Category:
+weather  clear_sky  cloudy  rainy  stormy
+split                                    
+test           119     244    104      33
+train          662    1415    583     280
+val             95     277     93      54
+------------------------------
+
+--- Analysing TRAIN Split ---
+Weather Categories in train:
+weather
+cloudy       1415
+clear_sky     662
+rainy         583
+stormy        280
+Name: count, dtype: int64
+
+
+Cloud Types in train:
+cloud_type
+Stratocumulus     336
+Cirrostratus      316
+Nimbostratus      298
+Altostratus       285
+Cumulonimbus      280
+Cumulus           270
+Altocumulus       265
+Stratus           260
+Cirrocumulus      198
+Cirrus            195
+Contrail          151
+Cirroculumulus     86
+Name: count, dtype: int64
+
+
+--- Analysing VAL Split ---
+Weather Categories in val:
+weather
+cloudy       277
+clear_sky     95
+rainy         93
+stormy        54
+Name: count, dtype: int64
+
+
+Cloud Types in val:
+cloud_type
+Stratocumulus     76
+Cumulus           58
+Cumulonimbus      54
+Nimbostratus      50
+Altocumulus       45
+Cirrostratus      44
+Altostratus       43
+Cirrocumulus      40
+Stratus           39
+Cirrus            35
+Cirroculumulus    19
+Contrail          16
+Name: count, dtype: int64
+
+
+--- Analysing TEST Split ---
+Weather Categories in test:
+weather
+cloudy       244
+clear_sky    119
+rainy        104
+stormy        33
+Name: count, dtype: int64
+
+
+Cloud Types in test:
+cloud_type
+Stratocumulus     60
+Nimbostratus      57
+Cirrostratus      55
+Altostratus       47
+Altocumulus       46
+Cumulus           42
+Stratus           40
+Contrail          33
+Cumulonimbus      33
+Cirrus            31
+Cirrocumulus      30
+Cirroculumulus    26
+Name: count, dtype: int64
+
+
+Comparing Weather Distributions:
+weather  clear_sky  cloudy  rainy  stormy
+split                                    
+test           119     244    104      33
+train          662    1415    583     280
+val             95     277     93      54
+
+
+Cloud Type vs Weather Category (All Splits Combined):
+weather         clear_sky  cloudy  rainy  stormy
+cloud_type                                      
+Altocumulus             0     356      0       0
+Altostratus             0       0    375       0
+Cirroculumulus          0     131      0       0
+Cirrocumulus            0     268      0       0
+Cirrostratus          415       0      0       0
+Cirrus                261       0      0       0
+Contrail              200       0      0       0
+Cumulonimbus            0       0      0     367
+Cumulus                 0     370      0       0
+Nimbostratus            0       0    405       0
+Stratocumulus           0     472      0       0
+Stratus                 0     339      0       0
