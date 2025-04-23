@@ -1,0 +1,355 @@
+import os
+import io
+import json
+import base64
+from flask import Flask, request, render_template, redirect, url_for
+from typing import Optional
+import torch
+import torch.nn as nn
+import timm # Use timm for ViT, or torchvision.models for ResNet
+from torchvision import transforms
+from PIL import Image
+import cv2
+import numpy as np
+import gc
+
+# --- Configuration ---
+MODEL_FILE = "best_overall_model.pth"
+CLASS_NAMES_FILE = "class_names.json"
+NUM_CLASSES = 4  # Update if different
+IMAGE_SIZE = (224, 224)
+# !!! IMPORTANT: Set BEST_MODEL_TYPE based on your best model !!!
+BEST_MODEL_TYPE = "ViT" # Options: "ViT", "ResNet50", "EfficientNetB0"
+# !!! IMPORTANT: Set TARGET_LAYER based on your model type !!!
+# Examples:
+# ViT: 'blocks[-1].norm1'
+# ResNet: 'layer4[-1]' # For ResNet50
+# EffNet: 'conv_head' or similar, check your model structure
+TARGET_LAYER_NAME = 'blocks[-1].norm1' # Adjust for your actual best model
+
+# Determine device
+device = torch.device("cpu") # Cloud Run typically uses CPU
+print(f"Using device: {device}")
+
+app = Flask(__name__)
+
+# --- Load Class Names ---
+try:
+    with open(CLASS_NAMES_FILE, "r") as f:
+        class_names = json.load(f)
+    print(f"Loaded class names: {class_names}")
+    NUM_CLASSES = len(class_names)
+except Exception as e:
+    print(f"Error loading {CLASS_NAMES_FILE}: {e}. Using fallback.")
+    class_names = [f"Class_{i}" for i in range(NUM_CLASSES)]
+
+# --- Load Model (Globally) ---
+def load_model(model_type, model_path, num_classes):
+    """Loads the specified model architecture and weights."""
+    print(f"Loading model type: {model_type} from {model_path}")
+    try:
+        if model_type == "ViT":
+            model = timm.create_model('vit_base_patch16_224', pretrained=False, num_classes=num_classes)
+        elif model_type == "ResNet50":
+            from torchvision import models
+            model = models.resnet50(weights=None) # Use weights=None for non-pretrained
+            num_ftrs = model.fc.in_features
+            model.fc = nn.Linear(num_ftrs, num_classes)
+        elif model_type == "EfficientNetB0":
+             model = timm.create_model('tf_efficientnet_b0_ns', pretrained=False, num_classes=num_classes)
+        else:
+             raise ValueError(f"Unsupported model type: {model_type}")
+
+        # Load state dict (ensure map_location is set for CPU loading)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.to(device)
+        model.eval()
+        print("Model loaded successfully.")
+        return model
+    except Exception as e:
+        print(f"!!! Error loading model: {e} !!!")
+        raise
+
+# --- Get Target Layer Reference (needed for GradCAM) ---
+def get_target_layer(model, layer_name_str):
+    """ Accesses a nested layer in a model using its string name. """
+    layers = layer_name_str.split('.')
+    current_module = model
+    try:
+        for layer in layers:
+            if '[' in layer and ']' in layer: # Handle list access like layer4[-1]
+                name, index = layer.split('[')
+                index = int(index.replace(']', ''))
+                current_module = getattr(current_module, name)[index]
+            else:
+                current_module = getattr(current_module, layer)
+        print(f"Successfully accessed target layer: {layer_name_str}")
+        return current_module
+    except Exception as e:
+        print(f"!!! Error accessing target layer '{layer_name_str}': {e} !!!")
+        print("Model Structure:")
+        print(model) # Print model structure to help debug layer name
+        raise ValueError(f"Could not find target layer: {layer_name_str}") from e
+
+# Load the model instance once when the app starts
+model = load_model(BEST_MODEL_TYPE, MODEL_FILE, NUM_CLASSES)
+target_layer_ref = get_target_layer(model, TARGET_LAYER_NAME) # Get the actual layer module
+
+# --- Image Preprocessing ---
+# Use validation/test transforms (no augmentation)
+preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(IMAGE_SIZE[0]),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+# --- GradCAM Class (Using Full Backward Hook) ---
+class GradCAM:
+    """ Gradient-weighted Class Activation Mapping (Using Full Backward Hook) """
+    def __init__(self, model: nn.Module, target_layer: nn.Module):
+        self.model = model
+        self.target_layer = target_layer
+        self.gradients = None
+        self.activations = None
+        self.hook_handles = []
+        # Hooks registered per-call now
+
+    def _register_hooks(self):
+        def forward_hook(module, input, output):
+            # Store activations from the target layer
+            self.activations = output.detach()
+            # print(f"Forward hook captured activations shape: {self.activations.shape}") # Optional debug
+
+        def full_backward_hook(module, grad_input, grad_output):
+            # The gradient flowing backwards OUT of the layer is grad_output.
+            # For most layers like Conv2d/Linear/Norm, grad_output is a tuple containing
+            # the gradient w.r.t. the layer's output tensor(s). We typically want the first one.
+            if isinstance(grad_output, tuple) and len(grad_output) > 0 and grad_output[0] is not None:
+                self.gradients = grad_output[0].detach()
+                # print(f"Backward hook captured gradients shape: {self.gradients.shape}") # Optional debug
+            else:
+                # Handle cases where grad_output might not be as expected
+                print(f"Warning: Unexpected grad_output format in full_backward_hook: {type(grad_output)}")
+                # Fallback or set gradients to None? Depends on exact model behavior. Setting to None might trigger error downstream safely.
+                self.gradients = None
+
+
+        # Clear previous handles just in case
+        self.remove_hooks()
+        handle_forward = self.target_layer.register_forward_hook(forward_hook)
+        # Use the full backward hook
+        handle_backward = self.target_layer.register_full_backward_hook(full_backward_hook)
+        self.hook_handles.extend([handle_forward, handle_backward])
+
+    def remove_hooks(self):
+        for handle in self.hook_handles:
+            handle.remove()
+        self.hook_handles = []
+        self.gradients = None
+        self.activations = None
+
+    def __call__(self, input_tensor: torch.Tensor, class_idx: Optional[int] = None) -> np.ndarray:
+        """
+        Generates the Grad-CAM heatmap. Handles 4D (CNN) and 3D (ViT) activations.
+        """
+        # Ensure model is in eval mode (important if called multiple times)
+        self.model.eval()
+        # Hooks are registered fresh for each call
+        self._register_hooks()
+
+        # Store the initial device for activations/gradients if needed
+        tensor_device = input_tensor.device
+
+        # Use a try...finally block to ensure hooks are always removed
+        final_cam = np.zeros((IMAGE_SIZE[0]//16, IMAGE_SIZE[1]//16)) # Default small map on error
+        try:
+            self.model.zero_grad() # Zero gradients before forward/backward
+            # Forward pass
+            output = self.model(input_tensor)
+
+            # Determine target class index
+            if class_idx is None:
+                class_idx = torch.argmax(output, dim=1).item()
+
+            # Target score for backward pass
+            target_score = output[:, class_idx]
+
+            # Backward pass to compute gradients
+            target_score.backward(retain_graph=False) # No retain_graph needed for typical CAM
+
+            # --- Critical Check: Ensure hooks captured data ---
+            if self.gradients is None or self.activations is None:
+                raise RuntimeError("Hooks did not capture gradients or activations. Check target layer, backward pass, and hook implementation.")
+
+            # --- Move to CPU for NumPy operations ---
+            # Perform calculations on CPU to avoid potential device mismatches later
+            gradients_cpu = self.gradients.cpu()
+            activations_cpu = self.activations.cpu()
+
+            # print(f"Debug GradCAM - Activations shape: {activations_cpu.shape}") # Keep for debug if needed
+            # print(f"Debug GradCAM - Gradients shape: {gradients_cpu.shape}")   # Keep for debug if needed
+
+            # --- Adaptive Pooling/Weighting ---
+            cam = None # Initialize cam
+            if gradients_cpu.ndim == 4 and activations_cpu.ndim == 4: # CNN case [B, C, H, W]
+                 weights = torch.mean(gradients_cpu, dim=(2, 3), keepdim=True)
+                 cam = torch.sum(weights * activations_cpu, dim=1) # -> [B, H, W]
+                 print("Debug GradCAM: Used 4D CNN processing path.")
+
+            elif gradients_cpu.ndim == 3 and activations_cpu.ndim == 3: # ViT case [B, N, D]
+                 weights = torch.mean(gradients_cpu, dim=1, keepdim=True) # Avg over tokens -> [B, 1, D]
+                 cam_prod = weights * activations_cpu # [B, 1, D] * [B, N, D] -> [B, N, D] (broadcast)
+                 cam = torch.sum(cam_prod, dim=2) # Sum over embedding dim -> [B, N]
+                 print("Debug GradCAM: Used 3D ViT processing path.")
+
+                 # --- Reshape ViT CAM to 2D Grid ---
+                 num_tokens = activations_cpu.shape[1]
+                 grid_size = int(np.sqrt(num_tokens - 1)) # Calculate expected grid size (e.g., sqrt(196)=14)
+                 expected_num_tokens = (grid_size * grid_size) + 1
+
+                 if num_tokens == expected_num_tokens and grid_size * grid_size == num_tokens -1:
+                     print(f"Debug GradCAM - Reshaping ViT CAM to grid size: {grid_size}x{grid_size}")
+                     cam = cam[:, 1:].reshape(cam.shape[0], grid_size, grid_size) # Exclude CLS, Reshape -> [B, H, W]
+                 else:
+                      print(f"Debug GradCAM - Warning: Token mismatch or non-square grid. Using CAM over tokens (excluding first). Shape: {cam[:, 1:].shape}")
+                      if num_tokens > 1:
+                          cam = cam[:, 1:] # -> [B, N-1] - Remains 1D effectively
+                      # else cam remains [B, N] or maybe [B] if N=1
+
+            else: # Unsupported dimensions
+                 print(f"Debug GradCAM - Error: Unsupported activation/gradient dimensions: Activ={activations_cpu.ndim}D, Grad={gradients_cpu.ndim}D")
+                 # Use the pre-initialized default zero map
+
+            # --- Post-process CAM (if calculated) ---
+            if cam is not None:
+                 cam = torch.relu(cam)
+                 # Normalize heatmap [0, 1] (operating on the single batch item B=0)
+                 cam_img = cam[0].numpy()
+                 min_val, max_val = np.min(cam_img), np.max(cam_img)
+                 if max_val > min_val: # Avoid division by zero/NaN
+                     cam_img = (cam_img - min_val) / (max_val - min_val + 1e-8)
+                 else: # Handle constant CAM (e.g., all zeros)
+                     cam_img = np.zeros_like(cam_img)
+                 final_cam = cam_img # Assign processed cam
+
+        except Exception as e_call:
+             print(f"!!! Error during GradCAM.__call__: {e_call}")
+             import traceback
+             traceback.print_exc()
+             # Keep the default zero map as final_cam
+
+        finally:
+             # CRITICAL: Always ensure hooks are removed
+            self.remove_hooks()
+
+        return final_cam
+
+# Instantiate GradCAM once, using the global model and target layer reference
+gradcam_instance = GradCAM(model=model, target_layer=target_layer_ref)
+
+
+# --- Prediction and Explanation Logic ---
+def get_prediction_and_explanation(image_pil):
+    """Processes image, gets prediction, generates GradCAM overlay."""
+    if image_pil is None:
+        return None, None, None
+
+    # Preprocess
+    input_tensor = preprocess(image_pil).unsqueeze(0).to(device)
+
+    # Prediction
+    with torch.no_grad():
+        outputs = model(input_tensor)
+        probabilities = torch.softmax(outputs, dim=1)
+        confidence, pred_idx = torch.max(probabilities, 1)
+
+    predicted_class = class_names[pred_idx.item()]
+    confidence_score = confidence.item()
+
+    # Explanation (GradCAM)
+    overlay_b64 = None
+    try:
+        print("Generating GradCAM...")
+        cam_numpy = gradcam_instance(input_tensor, class_idx=pred_idx.item())
+
+        # Create overlay
+        heatmap = cv2.resize(cam_numpy, (image_pil.width, image_pil.height))
+        heatmap = np.uint8(255 * heatmap)
+        heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+
+        # Convert PIL Image to OpenCV format (RGB -> BGR)
+        image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+
+        overlay = cv2.addWeighted(image_cv, 0.6, heatmap_color, 0.4, 0)
+
+        # Encode overlay to base64 string for HTML display
+        # Convert overlay BGR back to RGB before saving as JPG for browser display consistency
+        overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+        is_success, buffer = cv2.imencode(".jpg", overlay_rgb)
+        if is_success:
+            overlay_b64 = base64.b64encode(buffer).decode("utf-8")
+            print("GradCAM overlay generated successfully.")
+        else:
+            print("!!! Failed to encode GradCAM overlay to JPG.")
+
+    except Exception as e:
+        print(f"!!! Error during GradCAM generation: {e}")
+        # Potentially uncomment for more debug info:
+        # import traceback
+        # traceback.print_exc()
+
+    finally:
+        # Optional: Force garbage collection after potentially large tensor operations
+        gc.collect()
+
+    return predicted_class, confidence_score, overlay_b64
+
+
+# --- Flask Routes ---
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        if "file" not in request.files:
+            print("No file part in request")
+            return redirect(request.url)
+        file = request.files["file"]
+        if file.filename == "":
+            print("No file selected")
+            return redirect(request.url)
+        if file:
+            try:
+                # Read image file stream into PIL Image
+                image_bytes = file.read()
+                image_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+                # Get prediction and explanation
+                prediction, confidence, explanation_b64 = get_prediction_and_explanation(image_pil)
+
+                # Encode original image for display
+                original_b64 = base64.b64encode(image_bytes).decode('utf-8')
+
+
+                return render_template(
+                    "result.html",
+                    prediction=prediction,
+                    confidence=f"{confidence:.2%}",
+                    original_image=original_b64,
+                    explanation_image=explanation_b64 # This might be None if GradCAM failed
+                )
+
+            except Exception as e:
+                print(f"!!! Error processing uploaded file: {e} !!!")
+                # Add error handling message to user if needed
+                return redirect(request.url) # Redirect back on error
+
+    # GET request: just render the upload form
+    return render_template("index.html")
+
+
+if __name__ == "__main__":
+    # Get port from environment variable or default to 8080
+    port = int(os.environ.get("PORT", 8080))
+    # Run development server (use Gunicorn in Dockerfile CMD for production)
+    # Host 0.0.0.0 makes it accessible externally (within container network)
+    app.run(host="0.0.0.0", port=port, debug=False) # Keep debug=False for production containers
