@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Prediction Result</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        .result { margin-top: 20px; text-align: center; }
+        .prediction { font-size: 1.5em; color: #31708f; }
+        .confidence { font-size: 1.1em; color: #555; margin-bottom: 20px;}
+        .images { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px; margin-top: 20px;}
+        .image-box { text-align: center; }
+        .image-box img { max-width: 100%; height: auto; max-height: 300px; border: 1px solid #ddd; border-radius: 4px;}
+        .image-box h3 { margin-bottom: 10px; color: #555;}
+        a { display: block; text-align: center; margin-top: 30px; color: #337ab7; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Prediction Result</h1>
+        <div class="result">
+            <p class="prediction">Predicted Weather: <strong>{{ prediction }}</strong></p>
+            <p class="confidence">Confidence: {{ confidence }}</p>
+        </div>
+
+        <div class="images">
+            <div class="image-box">
+                <h3>Original Image</h3>
+                {% if original_image %}
+                    <img src="data:image/jpeg;base64,{{ original_image }}" alt="Original Image">
+                {% else %}
+                    <p>Original image not available.</p>
+                {% endif %}
+            </div>
+            <div class="image-box">
+                <h3>Explanation (GradCAM Overlay)</h3>
+                {% if explanation_image %}
+                    <img src="data:image/jpeg;base64,{{ explanation_image }}" alt="Explanation Heatmap">
+                {% else %}
+                    <p>Explanation image could not be generated.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <a href="{{ url_for('index') }}">Try another image</a>
+    </div>
+</body>
+</html>
