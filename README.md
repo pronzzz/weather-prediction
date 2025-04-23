@@ -65,7 +65,7 @@ The primary goal of this project is to automatically classify weather conditions
 
 This project combines data from:
 
-1.  **CCSN_v2 (Chinese Cloud Shape Network v2):** Contains various cloud type images. The script maps abbreviated names (e.g., 'Ci' for Cirrus) to full names and then to weather categories.
+1.  **CCSN_v2 (Cirrus Cumulus Stratus Nimbus Database):** Contains various cloud type images. The script maps abbreviated names (e.g., 'Ci' for Cirrus) to full names and then to weather categories.
 2.  **Howard-Cloud-X:** Another dataset containing cloud images, likely with different structures or labels, merged seamlessly.
 
 The script automatically maps the inherent cloud types (like Cumulonimbus, Cirrus, Stratus) found in these datasets to the four target weather categories: `clear_sky`, `cloudy`, `rainy`, `stormy`.
